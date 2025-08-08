@@ -7,7 +7,7 @@
 - 指定した mailbox を走査
 - 件名/本文/From/To を正規表現で AND 判定可能（各フィールド内は AND、複数フィールド間も AND）
 - アクションは既定で delete、`action: "trash"` でゴミ箱へ移動
-- 対話モード（`-I/--interactive`）で実行前に確認（y=はい, n=いいえ, d=全文表示, c=中断）
+- デフォルトで対話モード（実行前に確認）、`--force` で確認なし実行
 
 ## 必要要件
 
@@ -21,11 +21,17 @@ pip install -r requirements.txt
 ## 使い方
 
 ```bash
-python imap_mail_cleaner.py [-C CONFIG] [-I]
+python imap_mail_cleaner.py [-C CONFIG] [--force]
 
 オプション:
   -C, --config       コンフィグファイルのパス（省略時: スクリプトと同じディレクトリの config.json）
-  -I, --interactive  1件ごとに確認（y=はい, n=いいえ, d=全文表示, c=処理中断・正常終了）
+  --force           確認なしで実行（省略時: 削除/移動前に確認）
+
+対話モード（デフォルト）での操作:
+  y: はい（実行）
+  n: いいえ（スキップ）
+  d: 全文表示
+  c: 処理中断・正常終了
 ```
 
 ## コンフィグ仕様（`config.json`）
@@ -60,13 +66,13 @@ python imap_mail_cleaner.py [-C CONFIG] [-I]
 
 - `mailbox` は文字列または配列。複数指定時は順番に処理されます。
 - `subject`/`body`/`from`/`to` は文字列（正規表現）または配列（配列内は AND 条件）。複数フィールドを併用した場合も AND です。
+- `body` ルールは text/plain と text/html の両方をチェックし、いずれかにマッチすれば対象となります。
 - `action` 省略時は `delete`。`trash` の場合はゴミ箱へ移動します。ゴミ箱を特定できない、または COPY に失敗した場合はスキップ（削除しない）します。
 - ゴミ箱の特定はアカウントごとに最初に実施し、special-use の `\\Trash`、一般的名称（`Trash`, `Deleted Items` 等）の順で判定します。
 
 ## 安全性と注意
 
-- 削除は元に戻せません。まずは `-I/--interactive` を使用して挙動を確認してください。
-- ゴミ箱移動は COPY → `\\Deleted` 付与 → EXPUNGE で実現しています（MOVE 拡張は未使用）。
+- 削除は元に戻せません。まずはデフォルトの対話モードで挙動を確認してください。
 
 ## ライセンス
 
