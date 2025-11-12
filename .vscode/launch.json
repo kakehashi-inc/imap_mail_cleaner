@@ -11,8 +11,8 @@
             "program": "${workspaceFolder}/imap_mail_cleaner.py",
             "console": "integratedTerminal",
             "args": [
-              "--config",
-              "${workspaceFolder}/config.json"
+              "--config", "${workspaceFolder}/config.json",
+              "--skip-days", "60"
             ]
         }
     ]
