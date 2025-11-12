@@ -21,11 +21,13 @@ pip install -r requirements.txt
 ## 使い方
 
 ```bash
-python imap_mail_cleaner.py [-C CONFIG] [--force]
+python imap_mail_cleaner.py [-C CONFIG] [--force] [--skip-days DAYS]
 
 オプション:
   -C, --config       コンフィグファイルのパス（省略時: スクリプトと同じディレクトリの config.json）
   --force           確認なしで実行（省略時: 削除/移動前に確認）
+  --skip-days DAYS  指定した日数以内に受信したメールを除外する
+                    （デフォルト: 30日、0ですべてのメールを対象）
 
 対話モード（デフォルト）での操作:
   y: はい（実行）

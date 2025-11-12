@@ -71,7 +71,7 @@ def load_accounts_from_config(config_path: str) -> List[AccountConfig]:
     with open(config_path, "r", encoding="utf-8") as f:
         raw = json.load(f)
     if not isinstance(raw, dict):
-        raise ValueError("config.json のトップレベルはオブジェクトである必要があります")
+        raise ValueError("config.json top level must be an object")
     accounts: List[AccountConfig] = []
     for name, conf in raw.items():
         server_conf = conf.get("server", {})

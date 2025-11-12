@@ -21,11 +21,13 @@ pip install -r requirements.txt
 ## Usage
 
 ```bash
-python imap_mail_cleaner.py [-C CONFIG] [--force]
+python imap_mail_cleaner.py [-C CONFIG] [--force] [--skip-days DAYS]
 
 Options:
   -C, --config       Path to config file (default: config.json next to the script)
   --force           Execute without confirmation (default: confirmation before delete/move)
+  --skip-days DAYS  Exclude emails received within the specified number of days
+                    (default: 30 days, 0 for all emails)
 
 Interactive mode (default) controls:
   y: yes (execute)

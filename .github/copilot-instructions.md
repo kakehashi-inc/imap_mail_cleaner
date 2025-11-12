@@ -3,6 +3,18 @@
 ## Project Overview
 A Python CLI utility that connects to IMAP mailboxes and deletes/moves emails to trash based on regex pattern matching rules. The tool supports interactive confirmation mode by default and provides batch processing with `--force`.
 
+## Critical Environment Rules
+
+**NEVER perform these actions without explicit user permission:**
+- Do NOT create or modify virtual environments (venv directory already exists)
+- Do NOT install packages using pip or any package manager
+- Do NOT run package installation commands
+- Do NOT use install_python_packages tool
+- Do NOT use configure_python_environment for installation purposes
+- Only read environment information when necessary for debugging
+
+**The existing venv environment is pre-configured and must not be modified.**
+
 ## Agent Workflow Principles
 
 ### Context Gathering Strategy

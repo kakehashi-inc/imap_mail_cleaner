@@ -18,6 +18,7 @@ import os
 import sys
 import traceback
 from typing import Optional, Sequence
+from datetime import datetime, timedelta, timezone
 
 import imaplib
 
@@ -44,17 +45,17 @@ def _short_snippet(text: str, max_chars: int = 200) -> str:
 
 
 def _interactive_confirm(subject: str, body_text: str, action: str) -> str:
-    print("\n--- 対象メール ---")
+    print("\n--- Target Email ---")
     print(f"Subject: {subject}")
-    print("Body (一部):")
+    print("Body (preview):")
     print(_short_snippet(body_text))
     while True:
         if action.lower() == "trash":
-            question = "ゴミ箱へ移動しますか？"
+            question = "Move to trash?"
         else:
-            question = "削除しますか？"
+            question = "Delete?"
         choice = (
-            input(f"{question} (y:はい, n:いいえ, d:内容をすべて表示, c:処理を中断) > ")
+            input(f"{question} (y:yes, n:no, d:show full body, c:cancel) > ")
             .strip()
             .lower()
         )
@@ -63,12 +64,12 @@ def _interactive_confirm(subject: str, body_text: str, action: str) -> str:
         if choice == "n":
             return "no"
         if choice == "d":
-            print("--- Body (全文) ---")
+            print("--- Body (full) ---")
             print(body_text)
             continue
         if choice == "c":
             return "cancel"
-        print("y / n / d / c のいずれかを入力してください。")
+        print("Please enter y / n / d / c")
 
 
 def _apply_action_for_message(
@@ -83,7 +84,7 @@ def _apply_action_for_message(
     # trash の場合は trash_mailbox が必須
     if action == "trash":
         if not trash_mailbox:
-            print(f"[INFO] スキップ: Trash未検出のため subject: {subject}")
+            print(f"[INFO] Skip: Trash mailbox not found, subject: {subject}")
             return "skip"
 
     if interactive:
@@ -97,7 +98,7 @@ def _apply_action_for_message(
         copied = imap.copy_to_mailbox(uid, trash_mailbox)
         if not copied:
             print(
-                f'[WARN] Trash ("{trash_mailbox}") へのコピーに失敗。今回はスキップします。'
+                f'[WARN] Failed to copy to Trash ("{trash_mailbox}"). Skipping this message.'
             )
             return "error"
 
@@ -114,8 +115,21 @@ def _apply_action_for_message(
         return "error"
 
 
-def process_account(account: AccountConfig, interactive: bool) -> None:
-    print(f"==== アカウント: {account.name} ====")
+def process_account(
+    account: AccountConfig, interactive: bool, skip_days: int = 30
+) -> None:
+    print(f"==== Account: {account.name} ====")
+
+    # skip_days が 0 より大きい場合、カットオフ日時を計算
+    cutoff_date: Optional[datetime] = None
+    if skip_days > 0:
+        cutoff_date = datetime.now(timezone.utc) - timedelta(days=skip_days)
+        print(
+            f"[INFO] Excluding emails received within {skip_days} days (after {cutoff_date.strftime('%Y-%m-%d %H:%M:%S %Z')})"
+        )
+    else:
+        print("[INFO] All emails are targeted")
+
     try:
         with ImapClient(account.server) as client:
             client.connect()
@@ -123,18 +137,16 @@ def process_account(account: AccountConfig, interactive: bool) -> None:
             # Trash 特定を最初に実施
             trash_mailbox = client.find_trash_mailbox()
             if not trash_mailbox:
-                print("[WARN] Trash メールボックスが特定できませんでした。")
+                print("[WARN] Could not detect Trash mailbox.")
 
             for cleanup in account.cleanups:
                 for requested_mailbox in cleanup.mailboxes:
                     if not client.mailbox_exists(requested_mailbox):
-                        print(f"[WARN] Mailbox が見つかりません: {requested_mailbox}")
+                        print(f"[WARN] Mailbox not found: {requested_mailbox}")
                         continue
                     print(f"-- Mailbox: {requested_mailbox}")
                     if not client.select_mailbox(requested_mailbox):
-                        print(
-                            f"[WARN] Mailbox を選択できませんでした: {requested_mailbox}"
-                        )
+                        print(f"[WARN] Failed to select mailbox: {requested_mailbox}")
                         continue
 
                         # 大量件数対応: UID をチャンク列挙しながら逐次処理
@@ -144,6 +156,22 @@ def process_account(account: AccountConfig, interactive: bool) -> None:
 
                     for uid in uid_iter:
                         total_checked += 1
+
+                        # skip_days が指定されている場合、受信日時をチェック
+                        if cutoff_date is not None:
+                            msg_date = client.fetch_message_date(uid)
+                            if msg_date is not None:
+                                # タイムゾーン情報がない場合はUTCとして扱う
+                                if msg_date.tzinfo is None:
+                                    msg_date = msg_date.replace(tzinfo=timezone.utc)
+                                else:
+                                    # UTCに変換して比較
+                                    msg_date = msg_date.astimezone(timezone.utc)
+
+                                # カットオフ日時より新しいメールはスキップ
+                                if msg_date > cutoff_date:
+                                    continue
+
                         msg = client.fetch_message_rfc822(uid)
                         if msg is None:
                             print(
@@ -211,7 +239,7 @@ def process_account(account: AccountConfig, interactive: bool) -> None:
                     print("\r", end="")
 
                     if total_checked == 0:
-                        print("[INFO] 対象メールはありません。")
+                        print("[INFO] No target emails found.")
 
                     # mailbox 単位で expunge（削除・移動が1件以上の時のみ）
                     total_actions = counts["delete"] + counts["trash"]
@@ -220,7 +248,7 @@ def process_account(account: AccountConfig, interactive: bool) -> None:
 
                     # 内訳を表示
                     print(
-                        f"[INFO] チェック総数: {total_checked}, 削除: {counts['delete']}, ごみ箱移動: {counts['trash']}, スキップ: {counts['skip']}, エラー: {counts['error']}"
+                        f"[INFO] Total checked: {total_checked}, Deleted: {counts['delete']}, Moved to trash: {counts['trash']}, Skipped: {counts['skip']}, Errors: {counts['error']}"
                     )
     except ImapClient.MailboxesUnavailable as e:
         print(f"[ERROR] {e}")
@@ -239,13 +267,20 @@ def parse_args(argv: Optional[Sequence[str]] = None) -> argparse.Namespace:
         "--config",
         dest="config",
         default=os.path.join(os.path.dirname(os.path.abspath(__file__)), "config.json"),
-        help="コンフィグファイルのパス (省略時: スクリプトと同じディレクトリの config.json)",
+        help="Path to config file (default: config.json in script directory)",
     )
     parser.add_argument(
         "--force",
         dest="force",
         action="store_true",
-        help="確認なしで実行する（省略時: 削除/移動前に確認）",
+        help="Execute without confirmation (default: confirmation before delete/move)",
+    )
+    parser.add_argument(
+        "--skip-days",
+        dest="skip_days",
+        type=int,
+        default=30,
+        help="Exclude emails received within specified days (default: 30, 0 for all emails)",
     )
     return parser.parse_args(argv)
 
@@ -254,30 +289,32 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
     args = parse_args(argv)
     config_path = args.config
     interactive: bool = not bool(args.force)  # --force指定時はnon-interactive
+    skip_days: int = args.skip_days
+
     if not os.path.exists(config_path):
-        print(f"[ERROR] コンフィグファイルが見つかりません: {config_path}")
+        print(f"[ERROR] Config file not found: {config_path}")
         return 2
 
     try:
         accounts = load_accounts_from_config(config_path)
     except Exception as ex:
-        print(f"[ERROR] コンフィグの読み込みに失敗しました: {ex}")
+        print(f"[ERROR] Failed to load config: {ex}")
         return 2
 
     if not accounts:
-        print("[WARN] 有効なアカウント設定がありません。終了します。")
+        print("[WARN] No valid account settings found. Exiting.")
         return 0
 
     for account in accounts:
         try:
-            process_account(account, interactive=interactive)
+            process_account(account, interactive=interactive, skip_days=skip_days)
         except ProcessingCanceled:
-            print("[INFO] ユーザー操作により処理を中断しました。")
+            print("[INFO] Processing canceled by user.")
             return 0
         except imaplib.IMAP4.error as ex:
-            print(f"[ERROR] IMAP エラー: {ex}")
+            print(f"[ERROR] IMAP error: {ex}")
         except Exception:
-            print("[ERROR] 予期しないエラーが発生しました")
+            print("[ERROR] Unexpected error occurred")
             traceback.print_exc()
             return 2
 

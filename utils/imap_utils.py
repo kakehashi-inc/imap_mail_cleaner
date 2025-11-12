@@ -16,7 +16,7 @@ def _compile_patterns(patterns: Optional[Sequence[str]]) -> List[re.Pattern[str]
         try:
             compiled.append(re.compile(pat, flags=re.IGNORECASE | re.DOTALL))
         except re.error as ex:
-            print(f"[WARN] 無効な正規表現をスキップしました: {pat!r} ({ex})")
+            print(f"[WARN] Skipped invalid regex pattern: {pat!r} ({ex})")
     return compiled
 
 

@@ -6,6 +6,8 @@ from typing import Iterable, List, Optional, Sequence, Tuple
 import email
 from email import policy
 from email.message import Message
+from email.utils import parsedate_to_datetime
+from datetime import datetime
 
 from mods.config import ServerConfig
 
@@ -40,9 +42,7 @@ class ImapClient:
         self.conn.login(self.server.username, self.server.password)
         self._load_all_mailboxes()
         if not self._mailboxes_cache:
-            raise ImapClient.MailboxesUnavailable(
-                "メールボックス一覧を取得できませんでした"
-            )
+            raise ImapClient.MailboxesUnavailable("Failed to retrieve mailbox list")
 
     def disconnect(self) -> None:
         try:
@@ -251,6 +251,39 @@ class ImapClient:
                         )
                     except Exception:
                         return email.message_from_bytes(raw_bytes)
+        return None
+
+    def fetch_message_date(self, uid: str) -> Optional[datetime]:
+        """指定されたUIDのメッセージの受信日時を取得する。
+
+        INTERNALDATEを使用してサーバー側の受信日時を取得します。
+        取得できない場合はNoneを返します。
+        """
+        assert self.conn is not None
+        try:
+            typ, data = self.conn.uid("FETCH", uid, "(INTERNALDATE)")
+            if typ != "OK" or not data:
+                return None
+            for item in data:
+                if isinstance(item, bytes):
+                    text = item.decode(errors="replace")
+                elif isinstance(item, str):
+                    text = item
+                else:
+                    continue
+
+                # INTERNALDATE のパース: UID 123 (INTERNALDATE "17-Jan-2002 16:00:00 +0900")
+                m = re.search(r'INTERNALDATE\s+"([^"]+)"', text)
+                if m:
+                    date_str = m.group(1)
+                    try:
+                        # INTERNALDATE format: "DD-Mon-YYYY HH:MM:SS +HHMM"
+                        dt = parsedate_to_datetime(date_str)
+                        return dt
+                    except Exception:
+                        return None
+        except Exception:
+            return None
         return None
 
     def copy_to_mailbox(self, uid: str, mailbox: str) -> bool:
